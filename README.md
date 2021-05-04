@@ -33,15 +33,15 @@ The two plots below show the number of reviews that give a certain star rating a
 
 In this project, I will use an Item Response Theory (IRT) model to assess the ability of restaurants in the Yelp dataset to satisfy their customers. Traditionally, IRT models are used to measure the latent trait of intelligence based on the responses of several students to several different questions. In this application, I will use an IRT model to measure the latent ability of restaurants to satisfy their customer based on how well a collection of restaurants is reviewed by several customers.
 
-Mathematically, if the quality of restaurant *i* is *alpha_i*, the mean restaurant quality is *delta*, and the difficulty of pleasing reviewer *j* is *beta_j*, then a binary IRT model can be expressed as:
+Mathematically, if the quality of restaurant `i` is `alpha_i`, the mean restaurant quality is `delta`, and the difficulty of pleasing reviewer `j` is `beta_j`, then a binary IRT model can be expressed as:
 
-*y_ij ~* Bernoulli *(alpha_i - beta_j + delta)*
+```y_ij ~ Bernoulli(alpha_i - beta_j + delta)```
 
-where *y_ij* is the predicted review of reviewer *j* for restaurant *i*, where 1 is a good review, and 0 is a bad review.
+where `y_ij` is the predicted review of reviewer `j` for restaurant `i`, where 1 is a good review, and 0 is a bad review.
 
 ## Building a New Review System
 
-Solving the IRT model gives access to the parameter *alpha*, which is a new measure of the quality of a restaurant. Compared with the old measure of quality - the mean of the reviews - *alpha* accounts for the variability of reviewer difficulty by adding in the parameter *beta*. This addresses the first flaw by weighting each reviewer by how well they can tell good restaurants from bad restaurants.
+Solving the IRT model gives access to the parameter `alpha`, which is a new measure of the quality of a restaurant. Compared with the old measure of quality - the mean of the reviews - `alpha` accounts for the variability of reviewer difficulty by adding in the parameter `beta`. This addresses the first flaw by weighting each reviewer by how well they can tell good restaurants from bad restaurants.
 
 Addressing flaw two can be done by including assumptions about how often people right reviews and modelling the nonresponse of mediocre reviews.
 
