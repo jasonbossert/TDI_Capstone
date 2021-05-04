@@ -4,11 +4,11 @@
 
 The five-star ratings system is used across the internet to give customers a familiar, quantitative metric to base their decisions on. Having a ratings system that customers trust to provide an accurate metric into the quality of a product is absolutely critical for web-based companies. Unfortunately, the five-star ratings system suffers from several problems. This project will address these problems by applying an Item Response Theory model to better measure the ability of restaurants to satisfy their customers.
 
-**The Question: Can I build a five-star review system that more accurately communicates the quality of a product to the customer?**
+**The Question:** Can I build a five-star review system that more accurately communicates the quality of a product to the customer?
 
-**The Data: Yelp Open Dataset (11.73 GB)**
+**The Data:** Yelp Open Dataset (11.73 GB)
 
-**The Approach: Bayesian item response theory modelling**
+**The Approach:** Bayesian item response theory modelling
 
 ## Why Do We Use Five-Star Reviews?
 
