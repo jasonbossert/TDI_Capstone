@@ -28,10 +28,6 @@ The two plots below show the number of reviews that give a certain star rating a
 
 ![](/figures/ratings_dist.png)
 
-This plot shows the variance of each reviewer's ratings. If a reviewer only gives five-star reviews, then there is zero variance in their reviews. If a reviewer gives mostly one- and five-star reviews, then they will have a variance around 4. This shows that many reviewers have a small variance, and it might be worthwhile to weight reviewers with a larger variance higher.
-
-![](/figures/reviewer_variance.png)
-
 
 ## A Better Model
 
