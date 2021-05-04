@@ -24,13 +24,13 @@ However, there are a few flaws with the five-star review system as it is usually
 4. Products with many reviews have similar ratings. Taken together with the positivity bias in reviews, most business or products have an aggregate score of 3-4.5 stars. For example, a product with a 4.6-star rating may be much better than a product with a 4.4-star rating, but the difference in the number of stars doesn't give the customer much information. It is hard to separate the good from the great.
 5. New restaurants suffer from a 'cold start,' where the first review they receive is too little information to build an accurate rating.
 
-This plot shows the variance of each reviewer's ratings. If a reviewer only gives five-star reviews, then there is zero variance in their reviews. If a reviewer gives mostly one- and five-star reviews, then they will have a variance around 4. This shows that many reviewers have a small variance, and it might be worthwhile to weight reviewers with a larger variance higher.
-
-![](/figures/reviewer_variance.png)
-
 The two plots below show the number of reviews that give a certain star rating and the number of restaurants that have a certain rating, respectively. These plots highlight the challenges described in points two through four.
 
 ![](/figures/ratings_dist.png)
+
+This plot shows the variance of each reviewer's ratings. If a reviewer only gives five-star reviews, then there is zero variance in their reviews. If a reviewer gives mostly one- and five-star reviews, then they will have a variance around 4. This shows that many reviewers have a small variance, and it might be worthwhile to weight reviewers with a larger variance higher.
+
+![](/figures/reviewer_variance.png)
 
 
 ## A Better Model
