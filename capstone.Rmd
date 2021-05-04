@@ -1,0 +1,363 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(rstan)
+library(feather)
+library(arrow)
+library(ggplot2)
+library(bayesplot)
+library(ggpubr)
+
+root <- "/Users/jbossert/Documents/Job/TDI_Challenge/capstone2"
+```
+
+
+```{r}
+business_raw <- arrow::read_feather(paste0(root, "/yelp_business.feather"))
+users_raw <- arrow::read_feather(paste0(root, "/yelp_user.feather"))
+reviews_raw <- arrow::read_feather(paste0(root, "/yelp_review.feather"))
+```
+
+```{r}
+targets <- paste("Restaurants","Gastropubs","Bars", "Food Truck", 
+                "Fast Food", "Cafes", "Bakeries", "Desserts", 
+                "Dinner", "Breakfast", "Brunch", "Lunch", sep="|")
+
+business <- business_raw %>%
+  select(-index) %>%
+  #filter(state == "CO") %>%
+  filter(str_detect(categories, targets))
+
+business
+```
+
+```{r}
+reviews <- reviews_raw %>%
+  select(-c(date, index)) %>%
+  filter(business_id %in% business$business_id)
+```
+
+```{r}
+avg_star_dist <- reviews %>%
+  group_by(business_id) %>%
+  summarize(mean_stars = mean(stars))
+
+quantile(avg_star_dist$mean_stars, c(0.05, 0.10, 0.25, 0.5,  0.75, 0.90, 0.95))
+```
+
+```{r}
+p1 <- ggplot(avg_star_dist, aes(x = mean_stars)) +
+  geom_histogram(binwidth = 0.1) +
+  theme_minimal() +
+  labs(title = "Restaurant Ratings",
+       x = "Stars",
+       y = "Count")
+
+p2 <- ggplot(reviews_raw, aes(x = stars)) +
+  geom_histogram(binwidth = 1) +
+  theme_minimal() +
+  labs(title = "Review Stars",
+       x = "Stars",
+       y = "Count")
+
+ggarrange(p2, p1, cols = 2)
+```
+```{r}
+reviews_raw %>%
+  select(everything()) %>%
+  summarise_all(funs(sum(is.infinite(.))))
+```
+
+
+```{r}
+user_var <- reviews_raw %>%
+  group_by(user_id) %>%
+  summarize(mean = mean(stars),
+            sd = sd(stars)) %>%
+  filter(!is.na(sd))
+```
+```{r}
+ggplot(user_var, aes(x = sd^2)) +
+  geom_histogram(binwidth = 0.5) +
+  theme_minimal() +
+  labs(title = "Variance of Each Reviewer's Ratings",
+       x = "Variance",
+       y = "Number of reviewers")
+```
+
+
+
+```{r}
+users <- users_raw %>%
+  select(-c(yelping_since, index)) %>%
+  filter(user_id %in% reviews$user_id)
+```
+
+```{r}
+ggplot(reviews, aes(x = stars)) +
+  geom_histogram(binwidth = 1)
+
+reviews %>%
+  group_by(user_id) %>%
+  count() %>%
+  ggplot(aes(x = n)) +
+  geom_histogram() +
+  scale_x_continuous(trans = "log10") +
+  scale_y_continuous(trans = "log10")
+
+reviews %>%
+  group_by(business_id) %>%
+  count() %>%
+  ggplot(aes(x = n)) +
+  geom_histogram() +
+  scale_x_continuous(trans = "log10") +
+  scale_y_continuous(trans = "log10")
+```
+
+
+
+```{r}
+user_unique <- unique(reviews$user_id)
+business_unique <- unique(reviews$business_id)
+user_recode <- structure(as.list(user_unique), names = 1:length(user_unique))
+business_recode <- structure(as.list(business_unique), names = 1:length(business_unique))
+
+formatted_reviews <- reviews %>%
+  mutate(thresh_val = if_else(stars == 5, 1, 0)) %>%
+  select(-review_id) %>%
+  mutate(user_id = as.numeric(fct_recode(user_id, !!!user_recode)),
+         business_id = as.numeric(fct_recode(business_id, !!!business_recode))) %>%
+  arrange(user_id, business_id)
+
+formatted_reviews
+```
+
+```{r}
+irt_1pl_model <- stan_model(paste0(root, "/stan_models/irt_1pl.stan"))
+```
+
+```{r}
+irt_1pl_data <- list(
+  "J" = max(formatted_reviews$business_id),
+  "K" = max(formatted_reviews$user_id),
+  "N" = length(formatted_reviews$thresh_val),
+  "jj" = formatted_reviews$business_id,
+  "kk" = formatted_reviews$user_id,
+  "y" = formatted_reviews$thresh_val
+)
+```
+
+```{r}
+irt_1pl_fit <- sampling(irt_1pl_model, irt_1pl_data, iter = 2000,
+                        warmup = 1000, cores = 3, chains = 3, seed = 12345, thin = 1)
+```
+
+```{r}
+irt_1pl_post <- rstan::extract(irt_1pl_fit)
+irt_1pl_np <- nuts_params(irt_1pl_fit)
+```
+
+```{r}
+mcmc_nuts_energy(irt_1pl_np)
+```
+
+```{r}
+print(irt_1pl_fit, pars = c("delta", "alpha"))
+print(irt_1pl_vb, pars = c("delta", "alpha"))
+```
+
+
+```{r}
+irt_1pl_vb <- vb(irt_1pl_model, irt_1pl_data, 
+                  adapt_iter = 200, tol_rel_obj = 0.0001, importance_resampling = TRUE)
+```
+
+```{r}
+irt_1pl_vb_post <- rstan::extract(irt_1pl_vb)
+```
+
+
+
+
+```{r}
+vb_alpha <- irt_1pl_vb_post$alpha %>%
+  as_tibble() %>%
+  mutate(sample = 1:1000) %>%
+  pivot_longer(c(everything(), -sample), names_to = "var", values_to = "vb") %>%
+  mutate(var = as.numeric(str_sub(var, start = 2, end = -1)))
+
+alpha <- irt_1pl_post$alpha[1:1000, ] %>%
+  as_tibble() %>%
+  mutate(sample = 1:1000) %>%
+  pivot_longer(c(everything(), -sample), names_to = "var", values_to = "mcmc") %>%
+  mutate(var = as.numeric(str_sub(var, start = 2, end = -1)))
+
+alphas <- left_join(alpha, vb_alpha, by = c("sample",  "var")) %>%
+  pivot_longer(c(vb, mcmc), values_to = "val", names_to = "model")
+```
+
+```{r}
+alphas %>%
+  filter(var <= 1) %>%
+  ggplot(aes(x = val, group = model, color = model)) +
+  geom_density(alpha = 0.5) #+
+  #facet_wrap(~var, ncol = 3)
+```
+
+```{r}
+alphas_summary <- alphas %>%
+  group_by(model, var) %>%
+  summarise(mean = mean(val),
+            sd = sd(val)) %>%
+  filter(var <= 20) %>%
+  mutate(var = fct_reorder(factor(var), mean))
+
+alphas_summary_long <- alphas_summary %>%
+  select(-sd) %>%
+  pivot_wider(names_from = "model", values_from = "mean") 
+
+ggplot() +
+  #geom_segment(data = alphas_summary_long, aes(x = var, xend = var, y = mcmc, yend = vb)) +
+  geom_errorbar(data = alphas_summary, aes(x = var, y = mean, group = model, color = model, 
+                     ymin = mean - sd, ymax = mean + sd), alpha = 0.3) +
+  geom_point(data = alphas_summary, aes(x = var, y = mean, group = model, color = model)) +
+  coord_flip() +
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  scale_color_hue(labels = c("MCMC", "VB"))
+  labs(title = "Comparison of MCMC and VB Methods",
+       y = "Parameter Value",
+       x = "Restaurant",
+       color = "Model")
+```
+
+```{r}
+ratings <- formatted_reviews %>%
+  group_by(business_id) %>%
+  summarize(rating = mean(stars)) %>%
+  ungroup() %>%
+  mutate(var = business_id)  %>%
+  select(var, rating)
+
+alphas_summary <- alphas %>%
+  group_by(model, var) %>%
+  summarise(mean = mean(val),
+            sd = sd(val)) %>%
+  filter(model == "mcmc")
+
+joint_business <- business %>%
+  mutate(var = as.numeric(fct_recode(business_id, !!!business_recode))) %>%
+  left_join(alphas_summary, by = "var") %>%
+  select(business_id, var, stars, review_count, mean, sd) %>%
+  left_join(ratings, by = "var") %>%
+  filter(!is.na(mean)) %>%
+  mutate(rank_alpha = rank(mean),
+         rank_stars = rank(rating))
+```
+
+
+```{r}
+joint_business
+
+ggplot(joint_business, aes(x = rank_stars, y = rank_alpha)) +
+  geom_point()
+
+ggplot(joint_business, aes(x = rating, y = mean, color = cut_number(sd, n=5))) +
+  geom_point()
+
+ggplot(joint_business, aes(x = rating, y = mean)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), alpha = 0.1) +
+  geom_point(alpha = 0.3)
+```
+```{r}
+joint_business %>%
+  filter(mean > 1) %>%
+  filter(rating > 4.5) %>%
+  arrange(stars, mean)
+```
+```{r}
+chosen = c("_7lONCWyP_dZOCgWF8dEsg", "_lqeRWn4AeS2KkUj2cibSg")
+
+chosen_lookup = c("_7lONCWyP_dZOCgWF8dEsg" = "A", "_lqeRWn4AeS2KkUj2cibSg" = "B")
+
+joint_business %>%
+  filter(business_id %in% chosen) %>%
+  mutate(rest = chosen_lookup[business_id])
+
+reviews %>%
+  filter(business_id %in% chosen) %>%
+  mutate(rest = chosen_lookup[business_id]) %>%
+  ggplot(aes(x = stars, group = business_id), color = business_id) +
+  geom_histogram(aes(y = ..density..), binwidth = 1) +
+  facet_wrap(~rest) +
+  labs(title = "Distribution of Reviews",
+       x = "Stars", 
+       y = "Proportion") +
+  theme_minimal()
+```
+
+```{r}
+
+vb_beta <- irt_1pl_vb_post$beta %>%
+  as_tibble() %>%
+  mutate(sample = 1:1000) %>%
+  pivot_longer(c(everything(), -sample), names_to = "var", values_to = "vb") %>%
+  mutate(var = as.numeric(str_sub(var, start = 2, end = -1)))
+
+beta <- irt_1pl_post$beta[1:1000, ] %>%
+  as_tibble() %>%
+  mutate(sample = 1:1000) %>%
+  pivot_longer(c(everything(), -sample), names_to = "var", values_to = "mcmc") %>%
+  mutate(var = as.numeric(str_sub(var, start = 2, end = -1)))
+
+betas <- left_join(beta, vb_beta, by = c("sample",  "var")) %>%
+  pivot_longer(c(vb, mcmc), values_to = "val", names_to = "model")
+
+betas_summary <- betas %>%
+  group_by(model, var) %>%
+  summarise(mean = mean(val),
+            sd = sd(val)) %>%
+  filter(model == "mcmc")
+```
+
+```{r}
+betas_summary
+```
+
+
+```{r}
+inv_user_recode = setNames(names(user_recode), user_recode)
+
+
+reviews %>%
+  filter(business_id %in% chosen) %>%
+  mutate(rest = chosen_lookup[business_id]) %>%
+  left_join(users_raw) %>% 
+  select(review_id, rest, user_id, stars, review_count, average_stars) %>%
+  ggplot() +
+  geom_density(aes(x = average_stars, group = rest, color = rest), fill = NA) +  labs(title = "Average Number of Stars Given by Reviewers of Restaurant A and B",
+       x = "Average Stars",
+       y = "Proportion",
+       color = "Restaurant") +
+  theme_minimal()
+```
+
+```{r}
+business_raw %>%
+  filter(business_id %in% chosen)
+```
+
+
+
+
+
+
+
+
+
+
